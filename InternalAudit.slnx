@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="AuditService.API/AuditService.API.csproj" />
+  <Project Path="ObservationService.API/ObservationService.API.csproj" />
+</Solution>
