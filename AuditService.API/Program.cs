@@ -151,6 +151,15 @@ app.UseAuthorization();
 
 app.MapControllers();
 
+// Root endpoint for service discovery on platforms that probe '/'
+app.MapGet("/", () => Results.Ok(new
+{
+    service = "AuditService",
+    status = "running",
+    docs = "/swagger",
+    health = "/health"
+}));
+
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "AuditService" }));
 
