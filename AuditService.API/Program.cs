@@ -53,6 +53,22 @@ builder.Services.AddHttpClient<INotificationServiceClient, NotificationServiceHt
     client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:NotificationService"]!);
 });
 
+// CORS for frontend apps (local dev + deployed frontend)
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("FrontendCors", policy =>
+    {
+        policy
+            .WithOrigins(
+                "http://localhost:5173",
+                "https://localhost:5173",
+                "https://frontend-enhanced-audit-management.onrender.com"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    });
+});
+
 // JWT Authentication
 var jwtKey = builder.Configuration["Jwt:Secret"]!;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"]!;
@@ -145,6 +161,8 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Audit Servi
 
 // HTTPS redirection disabled for Render deployment (Render handles HTTPS at load balancer)
 // app.UseHttpsRedirection();
+
+app.UseCors("FrontendCors");
 
 app.UseAuthentication();
 app.UseAuthorization();
