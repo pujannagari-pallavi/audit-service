@@ -59,11 +59,21 @@ builder.Services.AddCors(options =>
     options.AddPolicy("FrontendCors", policy =>
     {
         policy
-            .WithOrigins(
-                "http://localhost:5173",
-                "https://localhost:5173",
-                "https://frontend-enhanced-audit-management.onrender.com"
-            )
+            .SetIsOriginAllowed(origin =>
+            {
+                if (string.IsNullOrWhiteSpace(origin)) return false;
+
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri)) return false;
+
+                // Allow local frontend dev servers on any port (e.g., 5173, 5174)
+                if (uri.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase)) return true;
+
+                // Allow deployed frontend
+                return origin.Equals(
+                    "https://frontend-enhanced-audit-management.onrender.com",
+                    StringComparison.OrdinalIgnoreCase
+                );
+            })
             .AllowAnyMethod()
             .AllowAnyHeader();
     });
