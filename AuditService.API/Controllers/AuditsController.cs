@@ -225,5 +225,14 @@ namespace AuditService.API.Controllers
             var dashboard = await _service.GetAuditManagerDashboardAsync(auditManagerId);
             return Ok(ApiResponse<AuditManagerDashboardDto>.SuccessResponse(dashboard, "Audit Manager dashboard retrieved successfully"));
         }
+
+        // POST api/audits/sync-all — Bulk sync all audits to ReportingService (Admin only)
+        [HttpPost("sync-all")]
+        [Authorize(Policy = "AdminOnly")]
+        public async Task<IActionResult> SyncAll()
+        {
+            var count = await _service.SyncAllAuditsAsync();
+            return Ok(ApiResponse<object>.SuccessResponse(new { syncedCount = count }, $"Successfully synced {count} audits to ReportingService"));
+        }
     }
 }
