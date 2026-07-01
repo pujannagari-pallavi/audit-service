@@ -13,9 +13,42 @@ using AutoMapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Sinks.MSSqlServer;
+using System.Collections.ObjectModel;
+using System.Data;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var sinkOptions = new MSSqlServerSinkOptions
+{
+    TableName = "AuditServiceLogs",
+    AutoCreateSqlTable = true
+};
+
+var columnOptions = new ColumnOptions
+{
+    AdditionalColumns = new Collection<SqlColumn>
+    {
+        new("ServiceName", SqlDbType.NVarChar, dataLength: 64)
+    }
+};
+
+builder.Host.UseSerilog((context, services, loggerConfiguration) =>
+{
+    loggerConfiguration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext()
+        .Enrich.WithProperty("ServiceName", "AuditService")
+        .WriteTo.Console()
+        .WriteTo.MSSqlServer(
+            connectionString: context.Configuration.GetConnectionString("AuditDb"),
+            sinkOptions: sinkOptions,
+            columnOptions: columnOptions
+        );
+});
 
 // Add services to the container.
 
@@ -191,4 +224,16 @@ app.MapGet("/", () => Results.Ok(new
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "AuditService" }));
 
-app.Run();
+try
+{
+    Log.Information("Starting AuditService API");
+    app.Run();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "AuditService API terminated unexpectedly");
+}
+finally
+{
+    Log.CloseAndFlush();
+}

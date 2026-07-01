@@ -480,29 +480,5 @@ namespace AuditService.API.Services
                 TotalPendingClosure = pendingClosureAudits.Count()
             };
         }
-
-        public async Task<int> SyncAllAuditsAsync()
-        {
-            _logger.LogInformation("Starting bulk sync of all audits to ReportingService");
-            var audits = await _repository.GetAllAsync();
-            int syncedCount = 0;
-
-            foreach (var audit in audits)
-            {
-                try
-                {
-                    var auditResponse = _mapper.Map<AuditResponseDto>(audit);
-                    await SyncToReportingServiceAsync(auditResponse);
-                    syncedCount++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to sync audit {AuditId} during bulk sync", audit.AuditId);
-                }
-            }
-
-            _logger.LogInformation("Bulk sync complete. Synced {Count} audits to ReportingService", syncedCount);
-            return syncedCount;
-        }
     }
 }

@@ -17,6 +17,5 @@ namespace AuditService.API.Services.Interfaces
         Task<bool> AuditExistsAsync(int auditId);
         Task<string?> GetAuditStatusAsync(int auditId);
         Task<AuditManagerDashboardDto> GetAuditManagerDashboardAsync(int auditManagerId);
-        Task<int> SyncAllAuditsAsync();
     }
 }
