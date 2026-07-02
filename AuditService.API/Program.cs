@@ -14,26 +14,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
-using Serilog.Sinks.MSSqlServer;
-using System.Collections.ObjectModel;
-using System.Data;
+using Serilog.Sinks.Elasticsearch;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
-
-var sinkOptions = new MSSqlServerSinkOptions
-{
-    TableName = "AuditServiceLogs",
-    AutoCreateSqlTable = true
-};
-
-var columnOptions = new ColumnOptions
-{
-    AdditionalColumns = new Collection<SqlColumn>
-    {
-        new("ServiceName", SqlDbType.NVarChar, dataLength: 64)
-    }
-};
 
 builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 {
@@ -43,11 +27,17 @@ builder.Host.UseSerilog((context, services, loggerConfiguration) =>
         .Enrich.FromLogContext()
         .Enrich.WithProperty("ServiceName", "AuditService")
         .WriteTo.Console()
-        .WriteTo.MSSqlServer(
-            connectionString: context.Configuration.GetConnectionString("AuditDb"),
-            sinkOptions: sinkOptions,
-            columnOptions: columnOptions
-        );
+        .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri(context.Configuration["Elasticsearch:Uri"]!))
+        {
+            IndexFormat = "audit-service-logs-{0:yyyy.MM.dd}",
+            AutoRegisterTemplate = true,
+            AutoRegisterTemplateVersion = AutoRegisterTemplateVersion.ESv7,
+            ModifyConnectionSettings = conn => conn.BasicAuthentication(
+                context.Configuration["Elasticsearch:Username"]!,
+                context.Configuration["Elasticsearch:Password"]!
+            ),
+            MinimumLogEventLevel = Serilog.Events.LogEventLevel.Information
+        });
 });
 
 // Add services to the container.
