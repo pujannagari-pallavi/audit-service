@@ -189,6 +189,8 @@ app.UseExceptionHandler(errorApp =>
 });
 
 // Enable Swagger for all environments (useful for API testing)
+app.UseSerilogRequestLogging();
+
 app.UseSwagger();
 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Audit Service API v1"));
 
@@ -198,6 +200,31 @@ app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Audit Servi
 app.UseCors("FrontendCors");
 
 app.UseAuthentication();
+
+app.UseSerilogRequestLogging(options =>
+{
+    options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
+    options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
+    {
+        var correlationId = httpContext.Request.Headers.TryGetValue("X-Correlation-ID", out var headerValue)
+            ? headerValue.ToString()
+            : httpContext.TraceIdentifier;
+
+        var userId = httpContext.User?.Identity?.IsAuthenticated == true
+            ? httpContext.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+              ?? httpContext.User.FindFirst("sub")?.Value
+              ?? "authenticated-user"
+            : "anonymous";
+
+        diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+        diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
+        diagnosticContext.Set("ClientIp", httpContext.Connection.RemoteIpAddress?.ToString());
+        diagnosticContext.Set("UserAgent", httpContext.Request.Headers.UserAgent.ToString());
+        diagnosticContext.Set("CorrelationId", correlationId);
+        diagnosticContext.Set("UserId", userId);
+    };
+});
+
 app.UseAuthorization();
 
 app.MapControllers();
