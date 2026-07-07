@@ -1,36 +1,54 @@
 using System.Net.Http.Json;
 using AuditService.API.Contracts.ObservationService;
+using System.Diagnostics;
 
 namespace AuditService.API.HttpClients
 {
     public class ObservationServiceHttpClient : IObservationServiceClient
     {
         private readonly HttpClient _httpClient;
+        private readonly ILogger<ObservationServiceHttpClient> _logger;
 
-        public ObservationServiceHttpClient(HttpClient httpClient)
+        public ObservationServiceHttpClient(HttpClient httpClient, ILogger<ObservationServiceHttpClient> logger)
         {
             _httpClient = httpClient;
+            _logger = logger;
         }
 
         public async Task<bool> AreAllObservationsApprovedAsync(int auditId)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("ObservationServiceHttpClient.AreAllObservationsApprovedAsync started for AuditId {AuditId}", auditId);
             var apiResponse = await _httpClient.GetFromJsonAsync<ApiResponse<AllApprovedResponse>>(
                 $"api/Observations/audit/{auditId}/all-approved");
-            return apiResponse?.Data?.AllApproved ?? false;
+            var result = apiResponse?.Data?.AllApproved ?? false;
+            stopwatch.Stop();
+            _logger.LogInformation("ObservationServiceHttpClient.AreAllObservationsApprovedAsync completed in {ElapsedMs} ms for AuditId {AuditId} with Result {Result}", stopwatch.ElapsedMilliseconds, auditId, result);
+            return result;
         }
 
         public async Task<ObservationStatusSummaryDto> GetObservationStatusSummaryAsync(int auditId)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("ObservationServiceHttpClient.GetObservationStatusSummaryAsync started for AuditId {AuditId}", auditId);
             var apiResponse = await _httpClient.GetFromJsonAsync<ApiResponse<ObservationStatusSummaryDto>>(
                 $"api/Observations/audit/{auditId}/status-summary");
-            return apiResponse?.Data ?? new ObservationStatusSummaryDto { AuditId = auditId };
+            var result = apiResponse?.Data ?? new ObservationStatusSummaryDto { AuditId = auditId };
+            stopwatch.Stop();
+            _logger.LogInformation("ObservationServiceHttpClient.GetObservationStatusSummaryAsync completed in {ElapsedMs} ms for AuditId {AuditId}", stopwatch.ElapsedMilliseconds, auditId);
+            return result;
         }
 
         public async Task<bool> HasObservationsAsync(int auditId)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("ObservationServiceHttpClient.HasObservationsAsync started for AuditId {AuditId}", auditId);
             var apiResponse = await _httpClient.GetFromJsonAsync<ApiResponse<HasObservationsResponse>>(
                 $"api/Observations/audit/{auditId}/has-observations");
-            return apiResponse?.Data?.HasObservations ?? false;
+            var result = apiResponse?.Data?.HasObservations ?? false;
+            stopwatch.Stop();
+            _logger.LogInformation("ObservationServiceHttpClient.HasObservationsAsync completed in {ElapsedMs} ms for AuditId {AuditId} with Result {Result}", stopwatch.ElapsedMilliseconds, auditId, result);
+            return result;
         }
 
         // Wrapper class for API responses

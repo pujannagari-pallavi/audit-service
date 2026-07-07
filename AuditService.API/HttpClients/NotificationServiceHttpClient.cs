@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using AuditService.API.Contracts.NotificationService;
+using System.Diagnostics;
 
 namespace AuditService.API.HttpClients
 {
@@ -17,6 +18,7 @@ namespace AuditService.API.HttpClients
 
         public async Task<bool> SendNotificationAsync(SendNotificationDto notification)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 var payload = new
@@ -40,23 +42,27 @@ namespace AuditService.API.HttpClients
                 if (!response.IsSuccessStatusCode)
                 {
                     var responseBody = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("NotificationService returned {StatusCode} | Body: {Body}",
-                        response.StatusCode, responseBody);
+                    stopwatch.Stop();
+                    _logger.LogError("NotificationService returned {StatusCode} in {ElapsedMs} ms | Body: {Body}",
+                        response.StatusCode, stopwatch.ElapsedMilliseconds, responseBody);
                     return false;
                 }
 
-                _logger.LogInformation("Notification sent successfully to UserId: {UserId}", notification.RecipientUserId);
+                stopwatch.Stop();
+                _logger.LogInformation("Notification sent successfully to UserId: {UserId} in {ElapsedMs} ms", notification.RecipientUserId, stopwatch.ElapsedMilliseconds);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send notification to UserId: {UserId}", notification.RecipientUserId);
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to send notification to UserId: {UserId} after {ElapsedMs} ms", notification.RecipientUserId, stopwatch.ElapsedMilliseconds);
                 return false;
             }
         }
 
         public async Task<bool> SendBatchNotificationsAsync(IEnumerable<SendNotificationDto> notifications)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 var payloads = notifications.Select(n => new
@@ -79,17 +85,20 @@ namespace AuditService.API.HttpClients
                 if (!response.IsSuccessStatusCode)
                 {
                     var responseBody = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("NotificationService bulk returned {StatusCode} | Body: {Body}",
-                        response.StatusCode, responseBody);
+                    stopwatch.Stop();
+                    _logger.LogError("NotificationService bulk returned {StatusCode} in {ElapsedMs} ms | Body: {Body}",
+                        response.StatusCode, stopwatch.ElapsedMilliseconds, responseBody);
                     return false;
                 }
 
-                _logger.LogInformation("Batch notifications sent successfully | Count: {Count}", payloads.Count);
+                stopwatch.Stop();
+                _logger.LogInformation("Batch notifications sent successfully | Count: {Count} | ElapsedMs: {ElapsedMs}", payloads.Count, stopwatch.ElapsedMilliseconds);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send batch notifications");
+                stopwatch.Stop();
+                _logger.LogError(ex, "Failed to send batch notifications after {ElapsedMs} ms", stopwatch.ElapsedMilliseconds);
                 return false;
             }
         }

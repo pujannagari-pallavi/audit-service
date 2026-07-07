@@ -16,6 +16,7 @@ using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Sinks.Elasticsearch;
 using System.Text;
+using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -123,6 +124,30 @@ builder.Services.AddAuthentication(options =>
         ValidAudience = jwtAudience,
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
     };
+    options.Events = new JwtBearerEvents
+    {
+        OnAuthenticationFailed = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning(context.Exception, "JWT authentication failed for path {Path}", context.HttpContext.Request.Path);
+            return Task.CompletedTask;
+        },
+        OnTokenValidated = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            var userId = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? context.Principal?.FindFirst("sub")?.Value
+                ?? "unknown";
+            logger.LogInformation("JWT token validated for UserId {UserId} on path {Path}", userId, context.HttpContext.Request.Path);
+            return Task.CompletedTask;
+        },
+        OnChallenge = context =>
+        {
+            var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger<Program>>();
+            logger.LogWarning("JWT challenge triggered for path {Path}. Error: {Error}", context.Request.Path, context.Error);
+            return Task.CompletedTask;
+        }
+    };
 });
 
 // Authorization Policies
@@ -147,6 +172,28 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 var app = builder.Build();
+
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+    var stopwatch = Stopwatch.StartNew();
+    logger.LogInformation("Request started: {Method} {Path}", context.Request.Method, context.Request.Path);
+
+    try
+    {
+        await next();
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Unhandled exception during request pipeline for {Method} {Path}", context.Request.Method, context.Request.Path);
+        throw;
+    }
+    finally
+    {
+        stopwatch.Stop();
+        logger.LogInformation("Request completed: {Method} {Path} responded {StatusCode} in {ElapsedMs} ms", context.Request.Method, context.Request.Path, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
+    }
+});
 
 // Apply migrations automatically on startup
 using (var scope = app.Services.CreateScope())
@@ -187,9 +234,6 @@ app.UseExceptionHandler(errorApp =>
         });
     });
 });
-
-// Enable Swagger for all environments (useful for API testing)
-app.UseSerilogRequestLogging();
 
 app.UseSwagger();
 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "Audit Service API v1"));

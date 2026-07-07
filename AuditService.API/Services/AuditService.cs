@@ -7,6 +7,7 @@ using AuditService.API.Enums;
 using AuditService.API.Models;
 using AuditService.API.Repositories.Interfaces;
 using AuditService.API.Services.Interfaces;
+using System.Diagnostics;
 
 namespace AuditService.API.Services
 {
@@ -37,44 +38,61 @@ namespace AuditService.API.Services
 
         public async Task<IEnumerable<AuditResponseDto>> GetAllAuditsAsync()
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Retrieving all audits");
             var audits = await _repository.GetAllAsync();
-            _logger.LogInformation("Retrieved {Count} audits", audits.Count());
+            stopwatch.Stop();
+            _logger.LogInformation("Retrieved {Count} audits in {ElapsedMs} ms", audits.Count(), stopwatch.ElapsedMilliseconds);
             return _mapper.Map<IEnumerable<AuditResponseDto>>(audits);
         }
 
         public async Task<AuditResponseDto?> GetAuditByIdAsync(int auditId)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Retrieving audit with ID {AuditId}", auditId);
             var audit = await _repository.GetByIdAsync(auditId);
             if (audit == null)
                 _logger.LogWarning("Audit with ID {AuditId} not found", auditId);
+            stopwatch.Stop();
+            _logger.LogInformation("Audit lookup completed in {ElapsedMs} ms for AuditId {AuditId}", stopwatch.ElapsedMilliseconds, auditId);
             return audit == null ? null : _mapper.Map<AuditResponseDto>(audit);
         }
 
         public async Task<AuditResponseDto?> GetAuditByCodeAsync(string auditCode)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Retrieving audit with code {AuditCode}", auditCode);
             var audit = await _repository.GetByCodeAsync(auditCode);
             if (audit == null)
                 _logger.LogWarning("Audit with code {AuditCode} not found", auditCode);
+            stopwatch.Stop();
+            _logger.LogInformation("Audit code lookup completed in {ElapsedMs} ms for AuditCode {AuditCode}", stopwatch.ElapsedMilliseconds, auditCode);
             return audit == null ? null : _mapper.Map<AuditResponseDto>(audit);
         }
 
         public async Task<IEnumerable<AuditResponseDto>> GetAuditsByStatusAsync(AuditStatus status)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Retrieving audits by status {Status}", status);
             var audits = await _repository.GetByStatusAsync(status);
+            stopwatch.Stop();
+            _logger.LogInformation("Retrieved {Count} audits by status {Status} in {ElapsedMs} ms", audits.Count(), status, stopwatch.ElapsedMilliseconds);
             return _mapper.Map<IEnumerable<AuditResponseDto>>(audits);
         }
 
         public async Task<IEnumerable<AuditResponseDto>> GetAuditsByDepartmentAsync(int departmentId)
         {
+            var stopwatch = Stopwatch.StartNew();
+            _logger.LogInformation("Retrieving audits by DepartmentId {DepartmentId}", departmentId);
             var audits = await _repository.GetByDepartmentAsync(departmentId);
+            stopwatch.Stop();
+            _logger.LogInformation("Retrieved {Count} audits by DepartmentId {DepartmentId} in {ElapsedMs} ms", audits.Count(), departmentId, stopwatch.ElapsedMilliseconds);
             return _mapper.Map<IEnumerable<AuditResponseDto>>(audits);
         }
 
         public async Task<AuditResponseDto> CreateAuditAsync(CreateAuditDto dto)
         {
+            var stopwatch = Stopwatch.StartNew();
             try
             {
                 _logger.LogInformation("Creating audit | Code: {Code} | Name: {Name} | Type: {Type} | Department: {Dept} | CreatedBy: {User} | StartDate: {Start} | EndDate: {End} | Auditors: {Auditors}", 
@@ -131,6 +149,8 @@ namespace AuditService.API.Services
                 // BRD 4.1: Notify Audit Managers that a new audit has been created and needs approval
                 await NotifyAuditCreatedAsync(auditResponse);
 
+                stopwatch.Stop();
+                _logger.LogInformation("CreateAudit workflow completed in {ElapsedMs} ms for AuditId {AuditId}", stopwatch.ElapsedMilliseconds, auditResponse.AuditId);
                 return auditResponse;
             }
             catch (InvalidOperationException)
@@ -140,6 +160,7 @@ namespace AuditService.API.Services
             }
             catch (Exception ex)
             {
+                stopwatch.Stop();
                 _logger.LogError(ex, "Error creating audit | Code: {Code} | Department: {Dept} | Error: {Message}", 
                     dto.AuditCode, dto.DepartmentId, ex.Message);
                 if (ex.InnerException != null)
@@ -153,6 +174,7 @@ namespace AuditService.API.Services
 
         public async Task<AuditResponseDto?> UpdateAuditAsync(int auditId, UpdateAuditDto dto, int changedByUserId)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Updating audit with ID {AuditId}", auditId);
             var audit = await _repository.GetByIdAsync(auditId);
             if (audit == null)
@@ -170,11 +192,14 @@ namespace AuditService.API.Services
             var auditResponse = _mapper.Map<AuditResponseDto>(audit);
             await SyncToReportingServiceAsync(auditResponse);
 
+            stopwatch.Stop();
+            _logger.LogInformation("UpdateAudit workflow completed in {ElapsedMs} ms for AuditId {AuditId}", stopwatch.ElapsedMilliseconds, auditId);
             return auditResponse;
         }
 
         public async Task<bool> DeleteAuditAsync(int auditId)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Deleting audit with ID {AuditId}", auditId);
             
             // Get audit before deletion to sync to reporting service
@@ -193,12 +218,15 @@ namespace AuditService.API.Services
                 await SyncToReportingServiceAsync(auditResponse, isDeleted: true);
                 _logger.LogInformation("Audit {AuditId} deletion synced to ReportingService", auditId);
             }
-            
+
+            stopwatch.Stop();
+            _logger.LogInformation("DeleteAudit workflow completed in {ElapsedMs} ms for AuditId {AuditId} with Result {Result}", stopwatch.ElapsedMilliseconds, auditId, result);
             return result;
         }
 
         public async Task<AuditResponseDto?> UpdateStatusAsync(int auditId, UpdateAuditStatusDto dto)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Updating status of audit {AuditId} to {NewStatus}", auditId, dto.Status);
             var audit = await _repository.GetByIdAsync(auditId);
             if (audit == null)
@@ -231,6 +259,8 @@ namespace AuditService.API.Services
             // Send notifications based on the new status
             await NotifyOnStatusChangeAsync(updatedAuditResponse, oldStatus, dto.ChangedByUserId);
 
+            stopwatch.Stop();
+            _logger.LogInformation("UpdateStatus workflow completed in {ElapsedMs} ms for AuditId {AuditId}", stopwatch.ElapsedMilliseconds, auditId);
             return updatedAuditResponse;
         }
 
@@ -275,12 +305,19 @@ namespace AuditService.API.Services
 
         public async Task<bool> AuditExistsAsync(int auditId)
         {
-            return await _repository.ExistsAsync(auditId);
+            var stopwatch = Stopwatch.StartNew();
+            var result = await _repository.ExistsAsync(auditId);
+            stopwatch.Stop();
+            _logger.LogInformation("Audit existence check completed in {ElapsedMs} ms for AuditId {AuditId} with Result {Result}", stopwatch.ElapsedMilliseconds, auditId, result);
+            return result;
         }
 
         public async Task<string?> GetAuditStatusAsync(int auditId)
         {
+            var stopwatch = Stopwatch.StartNew();
             var status = await _repository.GetStatusAsync(auditId);
+            stopwatch.Stop();
+            _logger.LogInformation("Audit status lookup completed in {ElapsedMs} ms for AuditId {AuditId} with Status {Status}", stopwatch.ElapsedMilliseconds, auditId, status);
             return status?.ToString();
         }
 
@@ -453,6 +490,7 @@ namespace AuditService.API.Services
 
         public async Task<AuditManagerDashboardDto> GetAuditManagerDashboardAsync(int auditManagerId)
         {
+            var stopwatch = Stopwatch.StartNew();
             _logger.LogInformation("Getting dashboard for Audit Manager {AuditManagerId}", auditManagerId);
 
             var pendingApprovalAudits = await _repository.GetByAuditManagerAndStatusAsync(auditManagerId, AuditStatus.PendingApproval);
@@ -470,7 +508,7 @@ namespace AuditService.API.Services
                 .Concat(findingsApprovedAudits)
                 .ToList();
 
-            return new AuditManagerDashboardDto
+            var result = new AuditManagerDashboardDto
             {
                 PendingApproval = pendingApprovalAudits.Select(a => _mapper.Map<AuditResponseDto>(a)).ToList(),
                 InProgress = allInProgress.Select(a => _mapper.Map<AuditResponseDto>(a)).ToList(),
@@ -479,6 +517,9 @@ namespace AuditService.API.Services
                 TotalInProgress = allInProgress.Count(),
                 TotalPendingClosure = pendingClosureAudits.Count()
             };
+            stopwatch.Stop();
+            _logger.LogInformation("Dashboard computation completed in {ElapsedMs} ms for AuditManagerId {AuditManagerId}", stopwatch.ElapsedMilliseconds, auditManagerId);
+            return result;
         }
     }
 }
