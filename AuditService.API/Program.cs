@@ -14,11 +14,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
+using Serilog.Context;
 using Serilog.Sinks.Elasticsearch;
 using System.Text;
 using System.Diagnostics;
 
 var builder = WebApplication.CreateBuilder(args);
+const string CorrelationIdHeader = "X-Correlation-ID";
 
 builder.Host.UseSerilog((context, services, loggerConfiguration) =>
 {
@@ -59,23 +61,26 @@ builder.Services.AddSingleton<IMapper>(provider =>
     return config.CreateMapper();
 });
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<CorrelationIdDelegatingHandler>();
+
 // Register HttpClient for Observation Service communication
 builder.Services.AddHttpClient<IObservationServiceClient, ObservationServiceHttpClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:ObservationService"]!);
-});
+}).AddHttpMessageHandler<CorrelationIdDelegatingHandler>();
 
 // Register HttpClient for Reporting Service communication
 builder.Services.AddHttpClient<IReportingServiceClient, ReportingServiceHttpClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:ReportingService"]!);
-});
+}).AddHttpMessageHandler<CorrelationIdDelegatingHandler>();
 
 // Register HttpClient for Notification Service communication
 builder.Services.AddHttpClient<INotificationServiceClient, NotificationServiceHttpClient>(client =>
 {
     client.BaseAddress = new Uri(builder.Configuration["ServiceUrls:NotificationService"]!);
-});
+}).AddHttpMessageHandler<CorrelationIdDelegatingHandler>();
 
 // CORS for frontend apps (local dev + deployed frontend)
 builder.Services.AddCors(options =>
@@ -175,6 +180,22 @@ var app = builder.Build();
 
 app.Use(async (context, next) =>
 {
+    var correlationId = context.Request.Headers.TryGetValue(CorrelationIdHeader, out var headerValue)
+        && !string.IsNullOrWhiteSpace(headerValue)
+        ? headerValue.ToString()
+        : Guid.NewGuid().ToString("N");
+
+    context.Items[CorrelationIdHeader] = correlationId;
+    context.Response.Headers[CorrelationIdHeader] = correlationId;
+
+    using (LogContext.PushProperty("CorrelationId", correlationId))
+    {
+        await next();
+    }
+});
+
+app.Use(async (context, next) =>
+{
     var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
     var stopwatch = Stopwatch.StartNew();
     logger.LogInformation("Request started: {Method} {Path}", context.Request.Method, context.Request.Path);
@@ -251,8 +272,8 @@ app.UseSerilogRequestLogging(options =>
     options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms";
     options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
     {
-        var correlationId = httpContext.Request.Headers.TryGetValue("X-Correlation-ID", out var headerValue)
-            ? headerValue.ToString()
+        var correlationId = httpContext.Items.TryGetValue(CorrelationIdHeader, out var correlationValue)
+            ? correlationValue?.ToString() ?? httpContext.TraceIdentifier
             : httpContext.TraceIdentifier;
 
         var userId = httpContext.User?.Identity?.IsAuthenticated == true
@@ -298,4 +319,35 @@ catch (Exception ex)
 finally
 {
     Log.CloseAndFlush();
+}
+
+public sealed class CorrelationIdDelegatingHandler : DelegatingHandler
+{
+    private const string CorrelationHeaderName = "X-Correlation-ID";
+    private readonly IHttpContextAccessor _httpContextAccessor;
+
+    public CorrelationIdDelegatingHandler(IHttpContextAccessor httpContextAccessor)
+    {
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        if (!request.Headers.Contains(CorrelationHeaderName))
+        {
+            var httpContext = _httpContextAccessor.HttpContext;
+            var correlationId = httpContext?.Items.TryGetValue(CorrelationHeaderName, out var value) == true
+                ? value?.ToString()
+                : httpContext?.Request.Headers[CorrelationHeaderName].ToString();
+
+            if (string.IsNullOrWhiteSpace(correlationId))
+            {
+                correlationId = Activity.Current?.TraceId.ToString() ?? Guid.NewGuid().ToString("N");
+            }
+
+            request.Headers.TryAddWithoutValidation(CorrelationHeaderName, correlationId);
+        }
+
+        return base.SendAsync(request, cancellationToken);
+    }
 }
