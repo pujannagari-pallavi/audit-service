@@ -203,7 +203,8 @@ using (var scope = app.Services.CreateScope())
     {
         var context = services.GetRequiredService<AuditDbContext>();
         context.Database.Migrate();
-        Console.WriteLine("AuditService: Database migrations applied successfully.");
+        var logger = services.GetRequiredService<ILogger<Program>>();
+        logger.LogInformation("AuditService: Database migrations applied successfully.");
     }
     catch (Exception ex)
     {
